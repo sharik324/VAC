@@ -1,0 +1,92 @@
+import math as m
+import matplotlib.pyplot as mp
+from scipy.optimize import curve_fit
+import numpy as np
+
+import scipy as sc
+
+voltage_devider=1 # делитель напряжения
+resistanseOm=510   # соптротивление для поиска тока
+# данные ввыодятся следующим образом: берется осциляция вниз(можно вверх, но тогда далее тоже только с верхними) и копируются данные в несколько столбцов каждой осциляции в тхт файл с табуляцией между столбцами 
+f=open(r"C:\Users\Evgeny\Desktop\python projects\20210621-0001-1.1 torr Ar 100 W.txt",'r')  # скопировать сюда путь к файлу
+a=[line for line in f.readlines()]
+vA=[]
+vB=[]
+
+for line in a:
+    n=line.rstrip().split('\t')
+               
+    vA.append(float(n[1]))
+    vB.append(float(n[2]))
+
+Current=[x/resistanseOm for x in vB]
+Voltage=[]
+for i in range(len(vA)):
+    Voltage.append(vA[i]*voltage_devider-vB[i])
+
+
+Voltage1=Voltage[:]
+Voltage=[x+0 for x in Voltage1] #сдвиг вправо
+
+Current1=Current[:]
+Current=[x+0 for x in Current] #сдвиг вниз, если надо
+
+
+
+def arange(a,b,c):
+    n=[]
+    while a<b:
+        n.append(a)
+        a=a+c
+    return n
+
+VoltageMax=max(Voltage)
+CurrentMax=max(Current)
+ 
+ 
+def func(xdata, a, b):   #задается аппроксимируемая функция, а,b- параметры, xdata - фактически массив значений х(может быть любым)
+    return a*np.tanh(b*xdata)  
+
+xdata1 = np.array(Voltage)  #обязательно такого типа массив, т.к на вход подается кортеж причем np типа
+ydata1 = np.array(Current)
+
+xfine1 = np.linspace(xdata1.min(), xdata1.max(), 100) # это просто развертка по х
+
+popt1, pcov1 = curve_fit(func, xdata1, ydata1) #метод наименьших квадратов, pop1 - массив из искомых параметров а,б
+
+
+mp.figure(figsize= (10,10))
+mp.plot(Voltage, Current, '.');
+
+
+mp.plot(xfine1, func(xfine1, popt1[0], popt1[1]),'black',label='%ftanh(%fx)'%(popt1[0],popt1[1]))
+mp.grid()
+mp.legend()
+mp.title('20210623-0001-3 торр Ar 250 W.txt')
+
+      
+
+
+dI1=((np.sqrt(np.diag (pcov1))[0])**2+(np.sqrt(np.diag (pcov1))[1])**2)**0.5  #так ищется  абсолютная погрешность (np.sqrt(np.diag (pcov1))- массив из абсолютных погрешностей на а и b
+
+
+dTe=dI1/func(12,popt1[0], popt1[1])
+
+print("погрешность Te=",dTe*100,"%")
+
+
+Irelevant=func(15,popt1[0],popt1[1])
+
+KBoltsman=1.38*10**(-23)
+Echarge=1.6*10**(-19)
+Te=Echarge/(KBoltsman*popt1[1])
+print("Te=%.2f ± %.2f K"%(Te,Te*dTe),"=%.1f ± %.1f K"%(Te/11600,Te/11600*dTe),"eV")
+
+S=(4*0.001*3.1415*(0.6*0.001)+3.1415*(0.001*0.3)**2)*2
+MassOfGas=6.64*10**(-26) # масса молекулы газа, в данном случае Ar
+
+dne=dTe*3/2
+ne=Irelevant/(0.4*Echarge*S*(KBoltsman*Te/MassOfGas)**0.5)
+print("n=%.2f ± %.2f"%(ne,ne*dne),"m^3==","=%.1f ± %.1f"%(ne/(10**16),ne/(10**16)*dne),"cm^3*10^10")
+
+mp.show()
