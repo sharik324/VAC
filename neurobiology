@@ -1,0 +1,161 @@
+import matplotlib.pyplot as mp
+from math import exp
+from scipy.optimize import curve_fit
+import numpy as np
+
+from mat4py import loadmat # костыль для обработки файла типа mat
+
+def averageANDdispersion(y): #функция для поиска среднего и дисперсии массива у
+   average=0
+   for i in range(len(y)): average=average+y[i]
+   average=average/len(y)
+   dispersion=0
+   for i in range(len(y)): dispersion=dispersion+(average-y[i])**2
+   dispersion=dispersion/len(y)
+   
+   return average,dispersion
+
+def arange(a,c,i): # делает массив от а до с с шагом i
+    d=[]
+    while a<=c:
+        d.append(a)
+        a=a+i
+    return d
+
+def Gauss(xdata,A,sigma): #функция Гаусса с вершиной в 0
+   return A*1/(sigma*(2*3.1415)**0.5)*np.exp(-0.5*((xdata)/sigma)**2)
+def Gauss1(xdata,A,sigma,shift): #функция Гаусса с вершиной в shift
+   return A*1/(sigma*(2*3.1415)**0.5)*np.exp(-0.5*((xdata-shift)/sigma)**2)
+
+def Convolution(filt,data): #свертка data с фильтром filt
+   con=[0 for i in range(len(data))]
+   for i in range(len(con)):
+      for j in range(len(filt)):
+         if i-j<0:continue
+         con[i]=con[i]+filt[j]*data[i-j]
+      con[i]=con[i]/len(filt)
+   return con   
+data = loadmat(r"C:\Users\Evgeny\Downloads\c1p8.mat") #выгрузка формата mat в удобноваримое для питона
+x=list(data.keys())
+y=[data[i] for i in x]
+time=[] # массив времени
+stim=[] # массив stim
+rho=[] # массив rho
+win=150 # поскольку окно 300 мс, а частота дискретизации 500Гц = 2 мс => количество сигналов в окне 300/2=150 штук
+
+t=0
+for i in range(len(y[0])): 
+   time.append(t) #создание массива по времени с шагом 2 мс
+   t=t+2
+   rho.append(y[0][i][0]) # массив rho заполнение
+   stim.append(y[1][i][0]) # массив stim заполнение
+   
+func=[0 for i in range(win)] # 0 массив искомой функции
+
+n=[0 for i in range(win)] # 0 массив количества сигналов для отклика (поскольку первый сигнал возникает и до момента в 300мс поэтому приходится делать такой костыль) 
+
+for i in range(len(y[0])): 
+   if rho[i]==1: # момент отклика
+       
+       if i <150: # костыль в случае, если сигнал не достиг 300мс
+           win=i
+       
+       for j in range(win): #здесь суммирование сигналов для искомой функции
+           func[j]=func[j]+stim[i-j]
+           n[j]=n[j]+1 # количество вхождений сигнала для данной точки
+       win=150 
+       
+func=[func[i]/n[j] for i in range(win)] # финальное усреднение
+time2=[2*i for i in range(win)] # массив времени окна
+
+DataResponceOnly=[] #массив оригинальных данных, но только в момент отклика
+for i in range(len(time)):
+    if rho[i]==1:
+        DataResponceOnly.append(stim[i])
+
+    
+
+
+Intersection_of_spikes=[0 for i in range(len(time))]
+spikedata=[0 for i in range(len(time))]
+for i in range(len(time)): #тут стоится инвертированные спайк обусловленные средние в точках отклика нейронов. Если несколько спайков попадают на одну точку, то берется среднее всех занчений в точке
+   if rho[i]==1: # момент отклика
+       for j in range(150):
+          if i-j<1 : continue
+          else:
+             Intersection_of_spikes[i-j]=Intersection_of_spikes[i-j]+1
+             spikedata[i-j]=spikedata[i-j]+func[149-j]
+spikedataAWithoutAveraging=spikedata[:]
+for i in range(len(spikedata)):
+   if Intersection_of_spikes[i]==0:continue
+   spikedata[i]=spikedata[i]/Intersection_of_spikes[i]
+
+
+spikeConvolution=Convolution(func,stim) # массив свернутых со спайком данных
+
+DataSpikeResponceOnly=[] #массив свернутых со спайком данных, но только в момент отклика
+for i in range(len(time)):
+    if rho[i]==1:
+        DataSpikeResponceOnly.append(spikeConvolution[i])
+
+
+
+def FitGAUSS(x,y): # фитовка с гауссом с вершиной в 0
+   
+   xdata = np.array(x[1:])  #обязательно такого типа массив, т.к на вход подается кортеж причем np типа
+   ydata = np.array(y)
+
+   xfine = np.linspace(xdata.min(), xdata.max(), 320) # это просто развертка по х
+
+   popt, pcov = curve_fit(Gauss, xdata, ydata,p0=[0.5,54]) #метод наименьших квадратов, pop1 - массив из искомых параметров а,б
+   return xfine, Gauss(xfine, popt[0], popt[1]),popt[0], popt[1]
+
+def FitGAUSSwithShift(x,y): # фитовка с гауссом с вершиной в shift
+   
+   xdata = np.array(x[1:])  #обязательно такого типа массив, т.к на вход подается кортеж причем np типа
+   ydata = np.array(y)
+
+   xfine = np.linspace(xdata.min(), xdata.max(), 100) # это просто развертка по х
+
+   popt, pcov = curve_fit(Gauss1, xdata, ydata,p0=[0.5,54,2]) #метод наименьших квадратов, pop1 - массив из искомых параметров а,б
+   return xfine, Gauss1(xfine, popt[0], popt[1],popt[2]),popt[0], popt[1],popt[2] # вывод массива х,y, константа А для Гаусса, сигма для Гаусса, сдвиг для Гаусса
+
+
+binsFORorinaldata=arange(-155,155,0.5) # массивы х для распредления 
+binsFORorinaldataResponceOnly=arange(-155,155,0.5)
+binsFORspike=arange(-165,165,0.5)
+binsFORspikeResponceOnly=arange(-135,185,0.5)
+
+
+
+nOriginalData, bins, patches=mp.hist(stim,binsFORorinaldata,label="Распределение данных",density=True) #строю нормированную на 1 по площади (density=True) гистограмму для оригинальных данных
+
+nOriginalDataResponce, bins, patches=mp.hist(DataResponceOnly,binsFORorinaldataResponceOnly,label="Распределение данных (только отклики)",density=True)#строю гистограмму для оригинальных данных , но только в откликах
+
+
+XGaussOriginal,YGaussOrinal,AGaussOriginal,SigmaGaussOriginal=FitGAUSS(binsFORorinaldata,nOriginalData) 
+XGaussOriginalResponce,YGaussOrinalResponce,AGaussOriginalResponce,SigmaGaussOriginalResponce=FitGAUSS(binsFORorinaldataResponceOnly,nOriginalDataResponce)
+mp.plot(XGaussOriginal,YGaussOrinal,'--',label=r"$\frac{A*\exp^{\frac{1}{2}(\frac{x}{\sigma})^{2}}}{\sigma\sqrt{2\pi}}, A=%.2f, \sigma=%.2f$"%(AGaussOriginal,SigmaGaussOriginal)) #строю фитовку Гауссом для оригинальных данных
+mp.plot(XGaussOriginalResponce,YGaussOrinalResponce,'--',label=r"$\frac{A*\exp^{\frac{1}{2}(\frac{x}{\sigma})^{2}}}{\sigma\sqrt{2\pi}}, A=%.2f, \sigma=%.2f$"%(AGaussOriginalResponce,SigmaGaussOriginalResponce))#строю фитовку Гауссом для оригинальных данных , но только в откликах
+
+mp.grid()
+mp.legend()
+mp.xlabel("дельта аплитуды сигнала=0.5")
+mp.ylabel("количество сигналов")
+mp.show()
+
+
+nSpikeData, bins, patches=mp.hist(spikeConvolution,binsFORspike,label="Распределение данных, сигнал свернут со спайком",density=True) #строю гистограмму для свернутых данных
+nSpikeDataResponce, bins, patches=mp.hist(DataSpikeResponceOnly,binsFORspikeResponceOnly,label="Распределение данных, сигнал свернут со спайком (только отклики)",density=True) #строю гистограмму для свернутых данных, но только в откликах
+XGaussSpike,YGaussSpike,AGaussSpike,SigmaGaussSpike=FitGAUSS(binsFORspike,nSpikeData)
+XGaussSpikeResponce,YGaussSpikeResponce,AGaussSpikeResponce,SigmaGaussSpikeResponce,ShiftGaussSpikeResponce=FitGAUSSwithShift(binsFORspikeResponceOnly,nSpikeDataResponce)
+
+mp.plot(XGaussSpike,YGaussSpike,'--',label=r"$\frac{A*\exp^{\frac{1}{2}(\frac{x}{\sigma})^{2}}}{\sigma\sqrt{2\pi}}, A=%.2f, \sigma=%.2f$"%(AGaussSpike,SigmaGaussSpike)) #строю фитовку Гауссом для свернутых данных
+mp.plot(XGaussSpikeResponce,YGaussSpikeResponce,'--',label=r"$\frac{A*\exp^{\frac{1}{2}(\frac{x-x_0}{\sigma})^{2}}}{\sigma\sqrt{2\pi}}, A=%.2f, \sigma=%.2f, x_0=%.2f$"%(AGaussSpikeResponce,SigmaGaussSpikeResponce,ShiftGaussSpikeResponce)) #строю фитовку Гауссом для свернутых данных , но только в откликах
+
+
+mp.grid()
+mp.legend()
+mp.xlabel("дельта аплитуды сигнала=0.5")
+mp.ylabel("количество сигналов")
+mp.show()
