@@ -1,0 +1,83 @@
+import matplotlib.pyplot as mp
+import numpy as np
+
+def imp():
+    file = open(r"D:\download\asd.txt","r")
+    x=[]
+    y=[]
+    t=[]
+    a=[line for line in file.readlines()]
+    t1=0
+    xaver=0
+    yaver=0
+    for i in a:
+        t1=t1+1
+        g=i.split('\t')
+        xaver=float(g[0].replace(",","."))+xaver
+        yaver=float(g[1].replace(",","."))+yaver
+        x.append(float(g[0].replace(",",".")))
+        y.append(float(g[1].replace(",",".")))
+        t.append(t1)
+    #print(xaver/t1,yaver/t1)
+    return [i-xaver/t1 for i in x],[i-yaver/t1 for i in y],t
+x,y,t=imp()
+
+
+#mp.show()
+
+wstart1=1.
+wstart2=0.
+w=[wstart1,wstart2]
+
+u=[[x[i],y[i]] for i in range(len(x))]
+
+dt=1
+tau=1000
+w_t=[w]
+def V(w1,u1):
+    return w1[0]*u1[0]+w1[1]*u1[1]
+def iteration(ww,uu,vv):
+    W1t_dt=ww[0]+(vv*uu[0]-vv**2*uu[0])*dt/tau
+    W2t_dt=ww[1]+(vv*uu[1]-vv**2*uu[1])*dt/tau
+    Wt_dt=(W1t_dt**2+W2t_dt**2)**0.5
+    
+    return [W1t_dt/Wt_dt,W2t_dt/Wt_dt]
+
+for j in range(len(t)):
+    vcur=V(w,u[j])
+    w=iteration(w,u[j],vcur)
+    w_t.append(w)
+print("w=",w)
+
+mp.plot(x,y,'.')
+#mp.plot([0,w[0]],[0,w[1]],'-',label="w_final %.2f %.2f tau=%d"%(w[0],w[1],tau))
+mp.arrow(0,0,w[0],w[1], width = 0.01,color="red", head_width = 0.2,label="w_final %.3f %.3f tau=%d"%(w[0],w[1],tau),zorder=10)
+
+mp.legend()
+mp.grid()
+mp.show()
+
+Cov11=0
+Cov12=0
+Cov21=0
+Cov22=0
+for i in range(len(x)):
+    Cov11=Cov11+x[i]*x[i]
+    Cov12=Cov12+x[i]*y[i]
+    Cov21=Cov21+y[i]*x[i]
+    Cov22=Cov22+y[i]*y[i]
+Cov11=Cov11/len(x)
+Cov12=Cov12/len(x)
+Cov21=Cov21/len(x)
+Cov22=Cov22/len(x)
+
+print("Cov=")
+print(Cov11,"\t",Cov12,"\n")
+print(Cov21,"\t",Cov22,"\n")
+
+mp.plot(t,[i[0] for i in w_t][:-1],'-',label="w_1")
+mp.plot(t,[i[1] for i in w_t][:-1],'-',label="w_2")
+mp.title("w_final %.3f %.3f tau=%d"%(w[0],w[1],tau),)
+mp.grid()
+mp.legend()
+mp.show()
